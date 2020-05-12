@@ -3,6 +3,7 @@
 module Data.Gather where
 
 import Control.Applicative
+import Control.Monad(join)
 
 -- | Fold over the outcomes of a type that has an 'Alternative'.
 --
@@ -31,6 +32,10 @@ data Gather g f a =
    , postProcess :: m -> g a
    }
 
+-- | Simple type for parsing monads that also take care of error handling or other
+-- 'postProcess' concerns.
+type Gather' f = Gather f f
+
 instance (Functor g, Functor f) => Functor (Gather g f) where
   fmap f (Gather items p) = Gather items (fmap (fmap f) p)
 
@@ -42,6 +47,10 @@ instance (Applicative g, Alternative f) => Applicative (Gather g f) where
 
 runGather :: (Alternative f) => Gather g f a -> f (g a)
 runGather (Gather i p) = let x = mconcat <$> many i in fmap p x
+
+-- | @'join' . 'runGather'@
+runGather' :: (Alternative f, Monad f) => Gather' f a -> f a
+runGather' = join . runGather
 
 gather :: Monoid m => (m -> g a) -> f m -> Gather g f a
 gather p i = Gather i p
@@ -77,6 +86,8 @@ oneOrMore onErr item = Gather (fmap (:[]) item) $
                                [] -> onErr
                                (a: as) -> pure (a, as)
 
+-- | Naive implementation that does not backtrack after the item has been parsed
+-- once. This may change in the future.
 exactlyOne :: (Functor f, Applicative g)
   => g a -- ^ on zero, typically a 'fail', 'Left' or similar
   -> g a -- ^ on many, typically a 'fail', 'Left' or similar
